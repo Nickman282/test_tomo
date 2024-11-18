@@ -48,6 +48,7 @@ class Processor:
         self.len_filepaths = len(filepaths)
         return None
 
+    # Loads one or more samples by index of the provided filepaths 
     def sample_loadin(self, idx=None):
         
         # Select random file if not specified
@@ -93,3 +94,4 @@ class Processor:
 
         return df_out
 
+    #def prior_updater():

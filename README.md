@@ -1,7 +1,4 @@
 
-    Uses the following tags:
-
-    
 
 ## The following tags were used in the code
 (0x0020, 0x0032) Image Position (Patient) (x, y z coordinates for the upper-left corner)

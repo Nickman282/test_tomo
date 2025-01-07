@@ -1,10 +1,14 @@
 common/__pycache__/
-
-data_driven_prior/__pycache__/
-data_driven_prior/var_model.pt
+common/params.json
 
 data_processor/__pycache__/
 parametric_prior/__pycache__/
 
-under_const/
-params.json
+cvar_prior/__pycache__/
+cvar_prior/cvar.pt
+
+dpmc_model/
+OUTDATED_basic_samplers/
+
+raw_results/
+var_prior/

@@ -29,7 +29,6 @@ fig, ax = plt.subplots(nrows=2, ncols=5)
 for i in range(10):
     im = ax[i//5, i%5].imshow(norm_slices[i], cmap='Greys', aspect='auto')
     plt.colorbar(im, ax=ax[i//5, i%5])
-    ax[i//5, i%5].set_title(f"Reconstruction Diameter: {df['Reconstruction Diameter'].values[i]}")
 plt.show()
 
 

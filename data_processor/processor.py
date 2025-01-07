@@ -98,6 +98,7 @@ class Processor:
             img = pixel_arrays[i]
 
             img[img < 0] = 0
+            img[img > 3000] = 3000
             
             img = normalization(img, min_val=0, max_val=1)
 

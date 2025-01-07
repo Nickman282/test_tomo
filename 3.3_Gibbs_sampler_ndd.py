@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 
 from common import load_params
 from data_processor import Processor
-from parametric_prior import TVLikeSampler, TikhLikeSampler
+from parametric_prior import HybridGibbsSampler
 
 dims = [256, 256]
 
 # Load in DICOM Processor
-settings_path = os.path.join(os.getcwd(), "params.json")
+settings_path = os.path.join(os.getcwd(), "common/params.json")
 param_dict = load_params(settings_path)
 
 filepaths = param_dict["test_filepaths"]
@@ -26,12 +26,8 @@ test_slice = processor_cl.norm_loader(batch_idx=idx, batch_size=1)[0]
 test_slice = test_slice.reshape(dims)
 
 # Create Sampler model
-qc_sampler = TikhLikeSampler()
-
-# Define limited angle projection of the image
-qc_sampler.projector_init(curr_dims=dims, og_dims=(512, 512), 
-                          num_angles=180, max_angle=np.pi,
-                          pix_spacing=param_dict['pix_space'])
+qc_sampler = HybridGibbsSampler(curr_dims=dims, og_dims=(512, 512), 
+                          num_angles=180, max_angle=np.pi)
 
 samples = qc_sampler.run(test_slice, N=500, Nb=500)
 

@@ -19,10 +19,13 @@ i = 11
 df = processor_cl.sample_loadin(idx=range(10*i, 10*i+10))
 batch = processor_cl.rescaler(df, final_dims=(256, 256))
 
-fig, ax = plt.subplots(nrows=2, ncols=5)
-for i in range(10):
-    im = ax[i//5, i%5].imshow(batch[i].reshape(256, 256), cmap='Greys_r', aspect='auto')
-    ax[i//5, i%5].set_title(f"{df['Image Type'].values[i]}")
-    plt.colorbar(im, ax=ax[i//5, i%5])
+fig, ax = plt.subplots(nrows=2, ncols=2)
+#plt.axis('off')
+for i in range(4):
+    im = ax[i//2, i%2].imshow(batch[i].reshape(256, 256), cmap='Greys_r', aspect='auto')
+    #.set_title(f"{df['Image Type'].values[i]}")
+    #plt.colorbar(im, ax=ax[i//5, i%5])
+    #fig.suptitle('LIDC-IDRI images')
+    #ax[i//2, i%2].axis("off")
 
 plt.show()

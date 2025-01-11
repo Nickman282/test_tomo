@@ -8,7 +8,7 @@ import numpy as np
 from pathlib import Path
 from common import load_params
 from data_processor import Processor
-from cvar_prior import DCVAE
+from cvar_prior import DCVAE2
 
 mem_file_1 = Path('D:/Studies/MEng_Project/Lung_CT/raw_results/cvar_training.mymemmap') 
 
@@ -26,13 +26,13 @@ processor_cl = Processor(filepaths, pmin=0, pmax=1,
 batch_size = 32
 num_batches = math.ceil(processor_cl.len_filepaths / batch_size)
 
-model = DCVAE(device=device).to(device)
+model = DCVAE2(device=device).to(device)
 #model = torch.load(os.path.join(os.getcwd(), "cvar_prior/cvar.pt")).to(device)
 
 optimizer = Adam(model.parameters(), lr=1e-5, amsgrad=True)
 
 losses_list = []
-epochs = 25
+epochs = 50
 for epoch in range(epochs):
     for i in range(num_batches):
 

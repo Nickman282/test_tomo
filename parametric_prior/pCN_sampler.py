@@ -2,7 +2,6 @@ import numpy as np
 
 import cuqi as cq
 import cuqipy_cil as cq_cil
-import pymc as pm
 import time
 from data_processor import Processor
 
@@ -10,23 +9,26 @@ from .generic_sampler import GenericSampler
 from cil.framework import ImageData, ImageGeometry
 from cil.framework import AcquisitionGeometry, AcquisitionData
 
+class pCNSampler(GenericSampler):
 
-
-    def _post_distribution(self, data, model=None):
+    def __init__(self, curr_dims, og_dims, num_angles, scale, 
+                        max_angle = np.pi, pix_spacing=None):
+        super().__init__(curr_dims, og_dims, num_angles, 
+                        max_angle = max_angle, pix_spacing=pix_spacing)
+        self.scale = scale
+        return None
+    def _post_distribution(self, data):
         
-        x = cq.distribution.Gaussian(0, 1, geometry=[1, 2048, 2, 2])
-
-        #x = model.decode(z)
-
+        x = cq.distribution.Gaussian(0, 1, geometry=self.A.domain_geometry)
         y = cq.distribution.Gaussian(self.A@x, 0.05**2)
 
-        y_like = cq.likelihood.Likelihood(y, data)
+        likelihood = cq.likelihood.Likelihood(y, data)
 
-        posterior = cq.distribution.Posterior(y_like, x)
+        posterior = cq.distribution.Posterior(likelihood, x)
 
         return posterior
-
-    def run(self, test_img, N=1000, Nb=500):
+    
+    def run(self, test_img, x0=None, N=500, Nb=500):
 
         test_sino = self._projection(test_img)
         y_obs = cq.array.CUQIarray(test_sino.flatten(order="C"), is_par=True, 
@@ -34,9 +36,8 @@ from cil.framework import AcquisitionGeometry, AcquisitionData
         
         posterior = self._post_distribution(data=y_obs)
 
-        # NUTS sampler
-        sampler = cq.sampler.NUTS(posterior)
+        # Gibbs sampler on p(d,s,x|y=y_obs)
+        sampler = cq.sampler.pCN(posterior, scale=self.scale, x0=x0)
 
-        #et = time.time() - st
 
         return sampler.sample(N, Nb).samples.T

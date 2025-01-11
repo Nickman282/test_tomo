@@ -68,7 +68,7 @@ def train_test_split(pat_filepaths, prop_train=0.8, random_seed=None):
     curr_ind = 0
     for key in keys:
         pat_fp_list = pat_filepaths[key]
-        if prop_ind > curr_ind:
+        if (values_len-100) > curr_ind:
             train_list += pat_fp_list
         else:
             test_list += pat_fp_list
@@ -142,6 +142,11 @@ def preprocessor(directory = os.getcwd(), *args, prop_train=0.8, random_seed=Non
     train_dir_list, test_dir_list = train_test_split(pat_filepaths=pat_filepaths,
                                                      prop_train=prop_train,
                                                      random_seed=random_seed)
+    
+    print(f"Total number of patients: {len(pat_ids)}")
+    print(f"Total number of slices: {len(test_dir_list) + len(train_dir_list)}")
+    print(f"Train number of slices: {len(train_dir_list)}")
+    print(f"Test number of slices: {len(test_dir_list)}")
     
     out_dict["train_filepaths"] = train_dir_list
     out_dict["test_filepaths"] = test_dir_list
@@ -279,11 +284,31 @@ def tau_coeff(f_samples, C=5):
             M += 1
     return tau_f_M
 
-
+# Accuracy metrics
 def MSE(ground_truth, sample):
 
     SE = np.sum((ground_truth - sample)**2)
-    Norm = ground_truth.ravel().shape[0]*SE
+    Norm = ground_truth.ravel().shape[0]
 
     Mean_SE = (1/Norm)*SE
+    return Mean_SE
 
+
+def PSNR(ground_truth, sample):
+    m = sample.max()
+
+    SE = np.sum((ground_truth - sample)**2)
+    Norm = ground_truth.ravel().shape[0]
+
+    Mean_SE = (1/Norm)*SE
+    return 10*np.log10(m**2/Mean_SE)
+
+
+# SSIM 
+
+def covariance(x, y):
+    xbar, ybar = np.mean(x), np.mean(y)
+    return np.sum((x - xbar)*(y - ybar))/(len(x) - 1)
+
+def SSIM(ground_truth, sample):
+    ground_truth_mean, sample_mean = np.mean(ground_truth), np.mean(sample)

@@ -36,13 +36,7 @@ class BlurKernel(nn.Module):
         z = self.bact_fnc(self.bbn2(self.bconv2(z)))
         return self.bact_fnc(self.bconv3(z))
 
-# 0 -> 1 to -1 -> 1 normalization
-def normalize(img):
-    return 2*img - 1
 
-# -1 -> 1 to 0 -> 1 normalization
-def unnormalize(img):
-    return 2*(img + 1)
     
 class Downsample(nn.Module):
     """
@@ -77,7 +71,7 @@ class Upsample(nn.Module):
 
         self.conv3 = nn.Conv2d(channel_in, channel_out, kernel_size, 1, kernel_size // 2)
 
-        self.up_nn = nn.Upsample(scale_factor=scale_factor, mode="nearest")
+        self.up_nn = nn.Upsample(scale_factor=scale_factor, mode="bilinear")
 
         self.act_fnc = nn.ELU()
 
@@ -92,7 +86,7 @@ class Upsample(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, channels, ch=32, latent_channels=2048):
         super().__init__()
-        self.conv_in = nn.Conv2d(channels, ch, 7, 1, 3) # Output: 256x256x32
+        self.conv_in = nn.Conv2d(channels, ch, 3, 1, 1) # Output: 256x256x32
         self.res_down_block1 = Downsample(ch, 2 * ch) # Output: 128x128x64
         self.res_down_block2 = Downsample(2 * ch, 4 * ch) # Output: 64x64x128
         self.res_down_block3 = Downsample(4 * ch, 8 * ch) # Output: 32x32x256
@@ -181,17 +175,21 @@ class DCVAE(nn.Module):
         kernel = gauss_kernel_init()
 
         
-        FT_x = torch.fft.fft2(x)
-        FT_recon_x = torch.fft.fft2(recon_x)
-        FT_kernel = torch.fft.fft2(kernel, s=FT_recon_x.shape[-2, -1])
+        FT_x = torch.fft.fft2(x).to(self.device)
+        FT_recon_x = torch.fft.fft2(recon_x).to(self.device)
+        FT_kernel = torch.fft.fft2(kernel, s=[FT_recon_x.shape[-2], FT_recon_x.shape[-1]]).to(self.device)
+
+        #FT_x_phase, FT_x_mag = FT_x.angle(), FT_x.abs()
+        #FT_recon_x_phase, FT_recon_x_mag = FT_recon_x.angle(), FT_recon_x.abs()
+        #FT_kernel_phase, FT_kernel_mag = FT_kernel.angle(), FT_kernel.abs()
 
         C = 0.01
 
-        loss_recon = F.mse_loss((torch.conj(FT_kernel)/(FT_kernel**2 + C))*(FT_recon_x - FT_x), reduction='sum')
+        loss_recon = torch.sum((torch.conj(FT_kernel)*FT_recon_x)/(FT_kernel**2 + C) - torch.conj(FT_kernel)/(FT_kernel**2 + C)*FT_x)**2
 
         ## Compute Loss
         # Reconstruction loss function
-        #loss_recon = F.mse_loss(recon_x, x, reduction='sum')
+        loss_recon = F.mse_loss(recon_x, x, reduction='sum')
 
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)

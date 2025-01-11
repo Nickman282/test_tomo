@@ -30,13 +30,13 @@ from cil.plugins import TomoPhantom
 
 class BasicProjector():
     
-    def __init__(self, num_angles, is_limited=False, init_dims=(512, 512), 
-                    curr_dims=(128, 128), init_pix_space=None):
+    def __init__(self, num_angles, max_angle, is_limited=False, init_dims=(512, 512), 
+                    curr_dims=(256, 256), init_pix_space=None):
     
         if init_pix_space is None:
-            voxel_dims = 1.0
+            voxel_dims = [1, 1]
         else:
-            voxel_dims = (init_dims[0]/curr_dims[0])*init_pix_space
+            voxel_dims = voxel_dims = [(init_dims[i]/curr_dims[i])*init_pix_space[i] for i in range(len(curr_dims))]   
 
         self.ig = ImageGeometry(voxel_num_x=curr_dims[0], 
                             voxel_num_y=curr_dims[1], 
@@ -45,15 +45,9 @@ class BasicProjector():
         
         self.img_dims = curr_dims
         
-        if is_limited == True:
-            max_angle = 2*num_angles
-            self.ag = AcquisitionGeometry.create_Parallel2D()\
+        self.ag = AcquisitionGeometry.create_Parallel2D()\
                     .set_angles(np.linspace(0, max_angle, num_angles, endpoint=False))\
-                    .set_panel(num_pixels=curr_dims[0], pixel_size=voxel_dims[0])               
-        else:
-            self.ag = AcquisitionGeometry.create_Parallel2D()\
-                    .set_angles(np.linspace(0, 180, num_angles, endpoint=False))\
-                    .set_panel(num_pixels=curr_dims[0], pixel_size=voxel_dims[0])   
+                    .set_panel(num_pixels=curr_dims[0], pixel_size=voxel_dims[0])                
 
         self.proj_op = ProjectionOperator(self.ig, self.ag)
 
@@ -67,3 +61,95 @@ class BasicProjector():
         img_phantom = self.proj_op.direct(img_container).as_array()    
 
         return img_phantom
+    
+
+class LimitedAngleFBP(BasicProjector):
+
+    def __init__(self, num_angles, max_angle, is_limited=False, init_dims=(512, 512), 
+                    curr_dims=(256, 256), init_pix_space=None):
+        super().__init__(num_angles=num_angles, max_angle=max_angle, is_limited=is_limited, init_dims=init_dims, 
+                    curr_dims=curr_dims, init_pix_space=init_pix_space)
+        
+        self.fbp = FBP(self.ig, self.ag, device='gpu')
+
+    def transform_single(self, img):
+        img = img.reshape(self.img_dims)
+
+        img_container = ImageData(img, geometry=self.ig)
+        img_phantom = self.proj_op.direct(img_container)
+
+        reconstruction = self.fbp(img_phantom).as_array()
+        return reconstruction.as_array()
+
+    def transform_batch(self, batch):
+        
+        out_img = []
+        for img in batch:
+            img = img.reshape(self.img_dims)
+
+            img_container = ImageData(img, geometry=self.ig)
+            img_phantom = self.proj_op.direct(img_container)
+
+            reconstruction = self.fbp(img_phantom)
+            out_img.append(reconstruction.as_array())
+
+        out_img = np.stack(out_img)
+
+        return out_img
+
+"""
+Pytorch-friendly Radon Transform, adapted from
+https://github.com/Cardio-AI/mfvi-dip-mia/
+""" 
+class FastRadonTransform(torch.nn.Module):
+    """
+    Calculates the radon transform of an image given specified
+    projection angles. This is a generator that returns a closure.
+
+    Parameters
+    ----------
+    image : Tensor
+        Input image of shape (B, C, H, W).
+    theta : Tensor, optional
+        Projection angles (in degrees) of shape (T,). If `None`, the value is set to
+        torch.arange(180).
+
+    Returns
+    -------
+    radon_image : Tensor
+        Radon transform (sinogram) of shape (B, C, T, W).
+    """
+
+    def __init__(self, image_size, theta=None):
+        super().__init__()
+        assert image_size[-2] == image_size[-1]
+
+        if theta is None:
+            theta = torch.deg2rad(torch.arange(180.))
+        else:
+            theta = torch.deg2rad(theta)
+
+        ts = torch.sin(theta)
+        tc = torch.cos(theta)
+        z = torch.zeros_like(tc)
+
+        trans = torch.stack([tc, -ts, z, ts, tc, z]).permute(1, 0).reshape(theta.size(0), 2, 3)
+        grid = torch.nn.functional.affine_grid(trans,
+                                               (theta.size(0), image_size[1], image_size[2], image_size[3]),
+                                               align_corners=False)
+
+        self.register_buffer("theta", theta)
+        self.register_buffer("ts", ts)
+        self.register_buffer("tc", tc)
+        self.register_buffer("z", z)
+        self.register_buffer("trans", trans)
+        self.register_buffer("grid", grid)
+
+    def forward(self, image):
+        img_r = torch.nn.functional.grid_sample(
+            image.expand(self.theta.size(0), -1, -1, -1),
+            self.grid,
+            mode='bilinear', padding_mode='zeros', align_corners=False)
+        radon_image = img_r.sum(2, keepdims=True).permute(2, 1, 0, 3)
+
+        return radon_image

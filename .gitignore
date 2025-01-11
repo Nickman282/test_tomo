@@ -7,8 +7,20 @@ parametric_prior/__pycache__/
 cvar_prior/__pycache__/
 cvar_prior/cvar.pt
 
-dpmc_model/
 OUTDATED_basic_samplers/
 
 raw_results/
 var_prior/
+
+dpmc_model/diffusion.pt
+
+unet/unet_fbp_135.pt
+unet/unet_fbp_90.pt
+
+deep_image_prior/dip.pt
+
+99_test.py
+99.1_OUTDATED_eigen.py
+99.2.0_OUTDATED_vae_model_test.py
+99.2.0_OUTDATED_var_model_training.py
+99.2.2_OUTDATED_basic_sampler.py

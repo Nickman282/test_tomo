@@ -31,12 +31,12 @@ model = torch.load(os.path.join(os.getcwd(), "cvar_prior/cvar.pt")).to(device)
 
 '''pCN Sampler'''
 
-sampler = pCN(num_angles=180)
+sampler = pCN(num_angles=135)
 
 data = sampler.projection(batch.detach().cpu().numpy())
-z0 = np.random.randn(2*2*2048)
+z0 = np.random.randn(16*16*256)
 
-x_samples, z_samples, log_like, acc = sampler.basic_sample(1000, 5000, model, data, z0, device)
+x_samples, z_samples, log_like, acc = sampler.sample_adapt(10000, 1000, model, data, z0, device)
 
 test_img = np.squeeze(batch.detach().cpu().numpy())
 

@@ -26,12 +26,12 @@ from cil.utilities.display import show2D
 # Plugins
 from cil.plugins.astra.processors import FBP, AstraBackProjector3D
 from cil.plugins.astra.operators import ProjectionOperator
-
+'''Modified pCN module from the CUQIpy distribution'''
 class pCN():
 
     def __init__(self, num_angles, max_angle = 180, init_dims=(512, 512), 
                     curr_dims=(256, 256), init_pix_space=None,
-                    prior_dims=[1, 2048, 2, 2]):
+                    prior_dims=[1, 256, 16, 16]):
         '''Define Projector'''
 
         if init_pix_space is None:
@@ -84,7 +84,7 @@ class pCN():
         x = x.detach().cpu().numpy()
         sino = self.projection(x)
 
-        log_like = (-np.linalg.norm(sino - self.data)/(2*0.05))**2
+        log_like = -(np.linalg.norm(sino - self.data)/(2*0.05))**2
 
         return log_like
     
@@ -145,7 +145,86 @@ class pCN():
         print(x_samples_list.shape)
 
         return x_samples_list, samples, loglike_eval, accave
-    
+
+
+    def sample_adapt(self, N, Nb, model, data, z0, device, scale=None):
+        # Set intial scale if not set
+        if scale is None:
+            self.scale = 0.1
+        else:
+            self.scale = scale
+
+        self.device = device
+        self.model = model.to(device)
+        self.data = data
+
+        Ns = N+Nb   # number of simulations
+
+        # allocation
+        samples = np.zeros((Ns, z0.ravel().shape[0]))
+        loglike_eval = np.zeros(Ns)
+        acc = np.zeros(Ns, dtype=int)
+
+        z0_tch = torch.Tensor(z0.reshape(self.prior_dims)).to(self.device)
+        x0 = self.model.decode(z0_tch)
+
+        # States are saved as np objects  
+        samples[0, :] = z0
+        loglike_eval[0] = self.log_likelihood(x0)
+        acc[0] = 1
+
+        # initial adaptation params 
+        Na = int(0.1*N)                              # iterations to adapt
+        hat_acc = np.empty(int(np.floor(Ns/Na)))     # average acceptance rate of the chains
+        lambd = self.scale
+        star_acc = 0.44    # target acceptance rate RW
+        i, idx = 0, 0
+
+        # run MCMC
+        for s in range(Ns-1):
+            # run component by component
+            samples[s+1, :], loglike_eval[s+1], acc[s+1] = self.single_update(samples[s, :], loglike_eval[s])
+            
+            # adapt prop spread using acc of past samples
+            if ((s+1) % Na == 0):
+                # evaluate average acceptance rate
+                hat_acc[i] = np.mean(acc[idx:idx+Na])
+
+                # d. compute new scaling parameter
+                zeta = 1/np.sqrt(i+1)   # ensures that the variation of lambda(i) vanishes
+                lambd = np.exp(np.log(lambd) + zeta*(hat_acc[i]-star_acc))
+
+                # update parameters
+                self.scale = min(lambd, 1)
+
+                # update counters
+                i += 1
+                idx += Na
+
+            # display iterations
+            print(f"Sample: {s+1}/{Ns}")
+
+        # remove burn-in
+        samples = samples[Nb:, :]
+        loglike_eval = loglike_eval[Nb:]
+        accave = acc[Nb:].mean()  
+        print('\nAverage acceptance rate:', accave, 'MCMC scale:', self.scale, '\n')
+        
+        # project samples back to image domain
+        x_samples_list = []
+        for i in range(samples.shape[0]):
+            
+            torch_z_samples = torch.Tensor(samples[i].reshape(self.prior_dims)).to(self.device)
+            
+            torch_x_samples = self.model.decode(torch_z_samples)
+
+            x_samples = torch_x_samples.detach().cpu().numpy()
+            x_samples_list.append(np.squeeze(x_samples))
+
+        x_samples_list = np.stack(x_samples_list)
+        print(x_samples_list.shape)
+
+        return x_samples_list, samples, loglike_eval, accave
 
     def single_update(self, z_t, loglike_eval_t):
 
@@ -181,68 +260,3 @@ class pCN():
         z_next = z_next.ravel()
         
         return z_next, loglike_eval_next, acc
-
-'''
-    def _sample_adapt(self, N, Nb):
-        # Set intial scale if not set
-        if self.scale is None:
-            self.scale = 0.1
-
-        Ns = N+Nb   # number of simulations
-
-        # allocation
-        samples = np.empty((self.dim, Ns))
-        loglike_eval = np.empty(Ns)
-        acc = np.zeros(Ns)
-
-        # initial state    
-        samples[:, 0] = self.x0
-        loglike_eval[0] = self._loglikelihood(self.x0) 
-        acc[0] = 1
-
-        # initial adaptation params 
-        Na = int(0.1*N)                              # iterations to adapt
-        hat_acc = np.empty(int(np.floor(Ns/Na)))     # average acceptance rate of the chains
-        lambd = self.scale
-        star_acc = 0.44    # target acceptance rate RW
-        i, idx = 0, 0
-
-        # run MCMC
-        for s in range(Ns-1):
-            # run component by component
-            samples[:, s+1], loglike_eval[s+1], acc[s+1] = self.single_update(samples[:, s], loglike_eval[s])
-            
-            # adapt prop spread using acc of past samples
-            if ((s+1) % Na == 0):
-                # evaluate average acceptance rate
-                hat_acc[i] = np.mean(acc[idx:idx+Na])
-
-                # d. compute new scaling parameter
-                zeta = 1/np.sqrt(i+1)   # ensures that the variation of lambda(i) vanishes
-                lambd = np.exp(np.log(lambd) + zeta*(hat_acc[i]-star_acc))
-
-                # update parameters
-                self.scale = min(lambd, 1)
-
-                # update counters
-                i += 1
-                idx += Na
-
-            # display iterations
-            if ((s+1) % (max(Ns//100,1))) == 0 or (s+1) == Ns-1:
-                print("\r",'Sample', s+1, '/', Ns, end="")
-
-            self._call_callback(samples[:, s+1], s+1)
-
-        print("\r",'Sample', s+2, '/', Ns)
-
-        # remove burn-in
-        samples = samples[:, Nb:]
-        loglike_eval = loglike_eval[Nb:]
-        accave = acc[Nb:].mean()   
-        print('\nAverage acceptance rate:', accave, 'MCMC scale:', self.scale, '\n')
-        
-        return samples, loglike_eval, accave
-'''
-
-

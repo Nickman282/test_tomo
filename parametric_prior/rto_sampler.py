@@ -19,7 +19,7 @@ class RTOSampler(GenericSampler):
         return None
     def _post_distribution(self, data):
         
-        x = cq.distribution.Gaussian(0, 2, geometry=self.A.domain_geometry)
+        x = cq.distribution.Gaussian(0, 1, geometry=self.A.domain_geometry)
         y = cq.distribution.Gaussian(self.A@x, 0.05**2)
 
         likelihood = cq.likelihood.Likelihood(y, data)

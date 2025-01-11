@@ -24,7 +24,7 @@ batch = torch.from_numpy(batch).to(device)
 model = torch.load(os.path.join(os.getcwd(), "cvar_prior/cvar.pt")).to(device)
 
 
-prior = torch.distributions.MultivariateNormal(loc=torch.zeros(2*2*2048), scale_tril=torch.eye(2*2*2048))
+#prior = torch.distributions.MultivariateNormal(loc=torch.zeros(16*16*256), scale_tril=torch.eye(16*16*256))
 
 
 
@@ -41,12 +41,12 @@ x_samples = model(batch).detach().cpu().numpy()
 
 
 fig, ax = plt.subplots(nrows=2, ncols=5)
-for i in range(10):
-    if i//5 == 0:
-        im = ax[i//5, i%5].imshow(x_samples[i].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+for i in range(8):
+    if i%2 == 0:
+        im = ax[i//2, i%2].imshow(x_samples[i].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
         #plt.colorbar(im, ax=ax[i//5, i%5])
     else:
-        im = ax[i//5, i%5].imshow(batch[i-5].detach().cpu().numpy().reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+        im = ax[i//2, i%2].imshow(batch[i-5].detach().cpu().numpy().reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
         #plt.colorbar(im, ax=ax[i//5, i%5])        
 
 plt.show()

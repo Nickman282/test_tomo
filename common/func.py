@@ -6,6 +6,8 @@ from glob import glob
 from PIL import Image
 from tqdm import tqdm
 
+from skimage.metrics import structural_similarity
+
 # Filter all files with incorrect orientation
 def select_orientation(slice_file):
     
@@ -284,6 +286,8 @@ def tau_coeff(f_samples, C=5):
             M += 1
     return tau_f_M
 
+## Convergence metricspCN
+
 # Accuracy metrics
 def MSE(ground_truth, sample):
 
@@ -303,6 +307,18 @@ def PSNR(ground_truth, sample):
     Mean_SE = (1/Norm)*SE
     return 10*np.log10(m**2/Mean_SE)
 
+def sq_PSNR(ground_truth, sample):
+    m = sample.max()
+
+    SE = np.sum((ground_truth - sample)**2)
+    Norm = ground_truth.ravel().shape[0]
+
+    Mean_SE = (1/Norm)*SE
+    return m**2/Mean_SE
+
+
+
+
 
 # SSIM 
 
@@ -311,4 +327,18 @@ def covariance(x, y):
     return np.sum((x - xbar)*(y - ybar))/(len(x) - 1)
 
 def SSIM(ground_truth, sample):
-    ground_truth_mean, sample_mean = np.mean(ground_truth), np.mean(sample)
+    gt_mean, sample_mean = np.mean(ground_truth), np.mean(sample)
+    gt_var, sample_var = np.var(ground_truth), np.var(sample)
+
+    SSIM = ((2*gt_mean*sample_mean + 0.01)*(2*covariance(ground_truth, sample) + 0.03))
+
+    SSIM = SSIM/((gt_mean**2 + sample_mean**2 + 0.01)*(sample_var**2 + gt_var + 0.03))
+
+    return SSIM
+
+
+def SSIM_2(ground_truth, sample, dims=(256, 256)):
+
+    ground_truth, sample = ground_truth.reshape(dims), sample.reshape(dims)
+
+    return structural_similarity(ground_truth.reshape(dims), sample.reshape(dims), data_range=1)

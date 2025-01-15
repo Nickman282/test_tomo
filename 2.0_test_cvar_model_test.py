@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 from common import load_params
 from data_processor import Processor
+import numpy as np
 
 '''Dataset Loader'''
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
@@ -16,7 +17,7 @@ diameter_bounds = [param_dict["diam_lowq"], param_dict["diam_highq"]]
 processor_cl = Processor(filepaths, pmin=0, pmax=1, 
                          diameter_bounds=diameter_bounds)
 
-batch = processor_cl.norm_loader(batch_idx=2, batch_size=10)
+batch = processor_cl.norm_loader(batch_idx=2, batch_size=8)
 batch = batch.reshape(batch.shape[0], 1, 256, 256)
 batch = torch.from_numpy(batch).to(device)
 
@@ -30,23 +31,23 @@ model = torch.load(os.path.join(os.getcwd(), "cvar_prior/cvar.pt")).to(device)
 
 #z_samples = prior.rsample(sample_shape=torch.Size([10])).to(device)
 
+
+
+z_samples, mu, logvar = model.encode(batch)
+
 #z_samples = z_samples.reshape(10, 1024, 2, 2)
 
-#x_samples = model.decode(z_samples).detach().cpu().numpy()
-
-#x_samples = model.encode(batch)
+x_samples = model.decode(z_samples).detach().cpu().numpy()
 #print(x_samples[0].shape)
 
-x_samples = model(batch).detach().cpu().numpy()
+x_ground = np.squeeze(batch.detach().cpu().numpy())
 
 
-fig, ax = plt.subplots(nrows=2, ncols=5)
-for i in range(8):
-    if i%2 == 0:
-        im = ax[i//2, i%2].imshow(x_samples[i].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
-        #plt.colorbar(im, ax=ax[i//5, i%5])
-    else:
-        im = ax[i//2, i%2].imshow(batch[i-5].detach().cpu().numpy().reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+fig, ax = plt.subplots(nrows=2, ncols=2)
+im = ax[0, 1].imshow(x_samples[0].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+im = ax[1, 1].imshow(x_samples[1].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+im = ax[0, 0].imshow(x_ground[0], cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+im = ax[1, 0].imshow(x_ground[1], cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
         #plt.colorbar(im, ax=ax[i//5, i%5])        
 
 plt.show()

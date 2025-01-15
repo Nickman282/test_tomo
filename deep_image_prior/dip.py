@@ -127,7 +127,7 @@ class UNet(nn.Module):
 
         x_out = self.conv_fin_1(x_out)
 
-        return self.act_func(self.conv_fin_2(x_out))
+        return self.act_func(x_out)
     
     def loss_fn(self, sino):
         recon_x = self.forward(self.noise)

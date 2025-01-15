@@ -26,13 +26,13 @@ processor_cl = Processor(filepaths, pmin=0, pmax=1,
 batch_size = 32
 num_batches = math.ceil(processor_cl.len_filepaths / batch_size)
 
-model = DCVAE2(device=device).to(device)
-#model = torch.load(os.path.join(os.getcwd(), "cvar_prior/cvar.pt")).to(device)
+#model = DCVAE2(device=device).to(device)
+model = torch.load(os.path.join(os.getcwd(), "cvar_prior/cvar.pt")).to(device)
 
 optimizer = Adam(model.parameters(), lr=1e-5, amsgrad=True)
 
 losses_list = []
-epochs = 50
+epochs = 25
 for epoch in range(epochs):
     for i in range(num_batches):
 

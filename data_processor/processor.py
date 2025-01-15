@@ -4,7 +4,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 import pydicom
 import numpy as np
 import pandas as pd
-import tqdm
+from tqdm import tqdm
 
 from common.func import normalization, zoom, \
                       resize, zero_oor
@@ -147,69 +147,34 @@ class Processor:
         fm_path[:] = 0.0
         sm_path[:] = 0.0
 
-        for i in range(num_chunks):
-            start = i*chunk_size
-            stop = (i+1)*chunk_size if (i+1)*chunk_size < self.len_filepaths else self.len_filepaths
+        rescaled_arrays = self.norm_loader(batch_idx=0, batch_size=self.len_filepaths, final_dims=(128, 128))
 
-            indexes = range(start, stop)
-            df = self.sample_loadin(idx=indexes)
+        curr_size = len(rescaled_arrays[0])
+        total_size += curr_size
 
-            # Select only one file per patient
-            patient_ids = df['Patient ID'].unique()
-            indices = []
-            for id in patient_ids:
-                df_pat = df[df['Patient ID'] == id]
-                pat_idx = df_pat.index.to_list()
-                sel_idx = pat_idx[np.random.randint(len(pat_idx))]
-                indices.append(sel_idx)
+        print(f"Total size: {total_size}")
+        print(f"Current chunk size: {curr_size}")   
 
-            indices = list(set(np.ravel(indices)))
-            df = df.iloc[indices]
+        # Take log of the images for prior
+        arrays = rescaled_arrays #+ 1e-6)
 
-            curr_size = len(indices)
-            total_size += curr_size
+        # First Moment Update
+        temp_first_moment = np.mean(arrays, axis=0)
 
-            rescaled_arrays = self.rescaler(df)
+        fm_path = ((total_size - curr_size)*fm_path + curr_size*temp_first_moment)/total_size    
 
-            # Ravel images
-            ravel_arrays = np.zeros(shape=(curr_size, rescaled_arrays[0].shape[0]**2))
-            for j in range(curr_size):
-                ravel_arrays[j] = rescaled_arrays[j].reshape(rescaled_arrays[0].shape[0]**2)
-                
-            print(f"Chunk Data Shape: {ravel_arrays.shape[0]}")
+        print(f"Current first mom. range: {fm_path.min()} -> {fm_path.max()}") 
 
-            print(f"Current chunk index: {i}")
-            print(f"Total size: {total_size}")
-            print(f"Current chunk size: {curr_size}")   
+        # Second Moment Update
+        print("Second Moment Update Progress:")
+        
+        step = rescaled_arrays[0].shape[0]
 
-            # Take log of the images for prior
-            log_arrays = np.log(ravel_arrays + self.pmax*1e-6)
+        N = arrays.shape[0]
+        temp_second_moment = (1/N)*(arrays.T @ arrays)
+        temp_second_moment = sm_path*(total_size - curr_size)/total_size + curr_size*temp_second_moment/total_size
+        sm_path = temp_second_moment
 
-            # First Moment Update
-            temp_first_moment = np.mean(log_arrays, axis=0)
-
-            fm_path[:] = ((total_size - curr_size)*fm_path[:] + curr_size*temp_first_moment[:])/total_size    
-
-            print(f"Current first mom. range: {fm_path.min()} -> {fm_path.max()}") 
-
-            # Second Moment Update
-            print("Second Moment Update Progress:")
+        print(f"Current second mom. range: {sm_path.min()} -> {sm_path.max()}")                
             
-            step = rescaled_arrays[0].shape[0]
-
-            for sub_i in tqdm(range(step)):
-                sec_st_i = step*sub_i
-                sec_en_i = step*sub_i + step
-
-                for sub_j in range(step):
-                    sec_st_j = step*sub_j
-                    sec_en_j = step*sub_j + step
-
-                    N = log_arrays.shape[0]
-                    temp_second_moment = (1/N)*(log_arrays.T[sec_st_i : sec_en_i] @ log_arrays[:, sec_st_j : sec_en_j])
-                    temp_second_moment = ((total_size - curr_size)*sm_path[sec_st_i : sec_en_i,  sec_st_j : sec_en_j] + curr_size*temp_second_moment)/total_size
-                    sm_path[sec_st_i : sec_en_i,  sec_st_j : sec_en_j] = temp_second_moment
-
-            print(f"Current second mom. range: {sm_path.min()} -> {sm_path.max()}")                
-            
-        return None
+        return sm_path, fm_path

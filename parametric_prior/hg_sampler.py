@@ -28,9 +28,21 @@ class HybridGibbsSampler(GenericSampler):
 
         return posterior
 
-    def run(self, test_img, N=1000, Nb=500):
+    def run(self, test_img, N=1000, Nb=500, noise_power = 0):
 
         test_sino = self._projection(test_img)
+
+        if noise_power != 0:
+            sq_factor = 10**(noise_power/10)
+            noise_sq = np.mean(test_sino**2)/sq_factor
+            noise = np.sqrt(noise_sq)
+            print(np.mean(test_sino))
+            print(noise)
+        else:
+            noise = 0
+
+        test_sino += noise*np.random.randn(*test_sino.shape)
+
         y_obs = cq.array.CUQIarray(test_sino.flatten(order="C"), is_par=True, 
                 geometry=cq.geometry.Image2D((self.num_angles, self.num_dets)))
         

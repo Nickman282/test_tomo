@@ -1,50 +1,143 @@
-import numpy as np
-
-import cuqi as cq
-import cuqipy_cil as cq_cil
-import time
-from common import FastRadonTransform
-from data_processor import Processor
-
-from .generic_sampler import GenericSampler
-
-from cuqi.distribution import JointDistribution
-from cuqipy_pytorch.distribution import Gaussian, Lognormal
-#from cuqipy_pytorch.sampler import NUTS
+import logging
+import os
 
 import torch
-import torch.nn as nn
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
+import pyro
+import pyro.distributions as dist
+from pyro.infer.mcmc import NUTS, MCMC
+from common import FastRadonTransform, load_params
+from pathlib import Path
 
-class NutsSampler(GenericSampler):
+from data_processor import Processor
 
-    def __init__(self, curr_dims, og_dims, num_angles,  
-                        max_angle = np.pi, pix_spacing=None):
-        super().__init__(curr_dims, og_dims, num_angles, 
-                        max_angle = max_angle, pix_spacing=pix_spacing)
-        return None
-    def _post_distribution(self, data):
-        
-        x = cq.distribution.Gaussian(0, 1, geometry=self.A.domain_geometry)
-        y = cq.distribution.Gaussian(self.A@x, 0.05**2)
+def circulant(tensor, dim=0):
+    S = tensor.shape[dim]
+    tmp = torch.cat([tensor.flip((dim,)), torch.narrow(tensor.flip((dim,)), dim=dim, start=0, length=S-1)], dim=dim)
+    return tmp.unfold(dim, S, 1).flip((-1,))
 
-        likelihood = cq.likelihood.Likelihood(y, data)
+def gauss_smoothness_prior(size=(256, 256)):
+    kernel = torch.tensor([1, -2, 1])
+    filler = torch.zeros(int(size[0]-kernel.shape[0]))
+    d_row = torch.cat((kernel, filler), 0)
+    D_mat = circulant(d_row)
+    D_mat[-1, -1] = 1
+    D_mat[-1, 0:1] = 0
+    # Find inverse approximation
+    #print(D_mat[-1])
+    mat = torch.kron(torch.eye(128), D_mat) + torch.kron(torch.eye(128), D_mat)
 
-        posterior = cq.distribution.Posterior(likelihood, x)
+    inv_mat = torch.inverse(mat)
 
-        return posterior
+    return inv_mat, mat
+
+class NUTS_sampler_Beta():
+
+    def __init__(self, dims, deg, device):
+        self.dims = dims
+        self.dim = dims[0]
+        self.deg = deg
+        self.device = device
+
+    def _projector(self):
+        return FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg))
+
+    def _pyro_model(self, sino):
+        log_normal = dist.Beta(2*torch.ones(self.dim**2).to(self.device), 5*torch.ones(self.dim**2).to(self.device))
+        x = pyro.sample("x", dist.Independent(log_normal, 1))
+        projector = FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg).to(self.device)).to(self.device)
+        proj = projector.forward(x.view(1, 1, self.dim, self.dim))
+        normal = dist.Normal(proj.view(self.dim*self.deg), (0.05**2)*torch.ones(self.dim*self.deg).to(self.device))
+        with pyro.plate("projections1", 1):
+            return pyro.sample("y", dist.Independent(normal, 1), obs=sino)
     
-    def run(self, test_img, x0=None, N=500, Nb=500):
+    def run(self, img, num_samples, num_burnin=0, add_noise=0):
+        torch_slice = torch.Tensor(img).view(1, 1, self.dim, self.dim).to(self.device)
 
-        test_sino = self._projection(test_img)
-        y_obs = cq.array.CUQIarray(test_sino.flatten(order="C"), is_par=True, 
-                geometry=cq.geometry.Image2D((self.num_angles, self.num_dets)))
+        projector = self._projector().to(self.device)
+        torch_sino = projector(torch_slice).view(self.deg*self.dim)
+
+
         
-        posterior = self._post_distribution(data=y_obs)
+        mean_sino = torch.mean(torch.flatten(torch_sino))
+        torch_sino += add_noise*mean_sino*torch.randn(size=[self.deg*self.dim]).to(self.device)
 
-        # Gibbs sampler on p(d,s,x|y=y_obs)
-        sampler = cq.sampler.NUTS(posterior, x0=x0)
+        model_func = lambda img: self._pyro_model(img)
 
+        nuts_kernel = NUTS(model_func, adapt_step_size=True)
+        mcmc = MCMC(nuts_kernel, num_samples=num_samples, warmup_steps=num_burnin)
 
-        return sampler.sample(N, Nb).samples.T
+        mcmc.run(torch_sino)
+        samples = mcmc.get_samples()['x']
+        return samples
+
+class NUTS_sampler_LMRF():
+
+    def __init__(self, dims, deg, device):
+        self.dims = dims
+        self.dim = dims[0]
+        self.deg = deg
+        self.device = device
+
+        #X = torch.linspace(0, self.dim**2-1, self.dim**2).reshape(-1, 1)
+        #sq_dists = torch.cdist(X, X,  p=2)**2
+        #self.cov_mat = torch.exp(-4*sq_dists / (2))
+        #self.cov_mat.fill_diagonal_(1.0) #+ torch.eye(self.dim**2)
+        
+        #self.chol_mat = torch.linalg.cholesky(self.cov_mat + 2*torch.eye(self.dim**2)).to(self.device)
+
+    def _projector(self):
+        return FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg))
+
+    def _pyro_model(self, sino):
+
+        #theta = pyro.sample("theta", dist.Gamma(1, 1e-4))
+        
+        #x = pyro.sample("x", dist.MultivariateNormal(torch.zeros(self.dim**2).to(self.device), torch.eye(self.dim**2).to(self.device)))
+        log_normal = dist.LogNormal(torch.zeros(self.dim**2).to(self.device), torch.ones(self.dim**2).to(self.device))
+        x = pyro.sample("x", dist.Independent(log_normal, 1))
+        #x = pyro.sample("x", dist.MultivariateNormal(loc=self.mean, scale_tril=self.cov))
+        #x = torch.log(x)
+        x = x.to(self.device) # 0.1*self.chol_mat.to(self.device)@
+
+        x = x.view(self.dim, self.dim)
+        projector = FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg).to(self.device)).to(self.device)
+        proj = projector.forward(x.view(1, 1, self.dim, self.dim))
+        normal = dist.Normal(proj.view(self.dim*self.deg), 0.05**2*torch.ones(self.dim*self.deg).to(self.device))
+        with pyro.plate("projections1", 1):
+            return pyro.sample("y", dist.Independent(normal, 1), obs=sino)
     
+    def run(self, img, num_samples, num_burnin=0, noise_power=0):
+
+        torch_slice = torch.Tensor(img).view(1, 1, self.dim, self.dim).to(self.device)
+
+        projector = self._projector().to(self.device)
+        torch_sino = projector(torch_slice.to(self.device)).view(self.deg*self.dim) 
+
+        if noise_power != 0:
+            sq_factor = 10**(noise_power/10)
+            noise_sq = torch.mean(torch_sino**2)/sq_factor
+            noise = torch.sqrt(noise_sq)
+            print(torch.mean(torch_sino))
+            print(noise)
+        else:
+            noise = 0
+
+        torch_sino += noise.to(self.device)*torch.randn(*torch_sino.shape).to(self.device)
+
+        model_func = lambda img: self._pyro_model(img)
+
+        nuts_kernel = NUTS(model_func, adapt_step_size=True)
+        mcmc = MCMC(nuts_kernel, num_samples=num_samples, warmup_steps=num_burnin)
+
+        mcmc.run(torch_sino)
+        samples = mcmc.get_samples()['x']
+        return samples
+
+
+'''
+
+'''

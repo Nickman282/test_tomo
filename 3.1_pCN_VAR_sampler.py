@@ -11,7 +11,6 @@ dims = [256, 256]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
 
 '''Dataset Loader'''
-#device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
 
 param_dict = load_params(os.path.join(os.getcwd(), "common/params.json"))
 
@@ -50,5 +49,3 @@ plt.colorbar(im, ax=ax[1])
 plt.show()
 
 
-
-#

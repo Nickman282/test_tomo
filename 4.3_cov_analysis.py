@@ -25,7 +25,7 @@ rto_mem_file_1 = Path('D:/Studies/MEng_Project/Lung_CT/raw_results/RTO_135_0.mym
 samples_RTO_135_0 = np.memmap(filename = rto_mem_file_1, dtype='float32', mode='r', shape=(num_samples*num_imgs, int(dim**2)))
 
 nuts_mem_file_1 = Path('D:/Studies/MEng_Project/Lung_CT/raw_results/NUTS_135_0.mymemmap')
-samples_NUTS_135_0 = np.memmap(filename = nuts_mem_file_1, dtype='float32', mode='r', shape=(num_samples*num_imgs, int(dim**2)))
+samples_NUTS_135_0 = np.memmap(filename = nuts_mem_file_1, dtype='float32', mode='r', shape=(100*num_imgs, int(dim**2)))
 
 # Load in DICOM Processor
 settings_path = os.path.join(os.getcwd(), "common/params.json")
@@ -48,7 +48,7 @@ for i in range(num_imgs):
 
     hg_samples = samples_HG_135_0[i*num_samples:(i+1)*num_samples]
     rto_samples = samples_RTO_135_0[i*num_samples:(i+1)*num_samples]
-    nuts_samples = samples_NUTS_135_0[i*num_samples:(i+1)*num_samples]
+    nuts_samples = samples_NUTS_135_0[i*100:(i+1)*100]
 
     hg_mean = np.mean(hg_samples, axis=0)
     rto_mean = np.mean(rto_samples, axis=0)

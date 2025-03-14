@@ -36,34 +36,37 @@ def gauss_smoothness_prior(size=(256, 256)):
 
 class NUTS_sampler_Beta():
 
-    def __init__(self, dims, deg, device):
+    def __init__(self, dims, deg, device, likel_std=0.05, beta_vals=[2, 5]):
         self.dims = dims
         self.dim = dims[0]
         self.deg = deg
         self.device = device
+        self.likel_std = likel_std
+        self.beta_vals = beta_vals
 
     def _projector(self):
         return FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg))
 
     def _pyro_model(self, sino):
-        log_normal = dist.Beta(2*torch.ones(self.dim**2).to(self.device), 5*torch.ones(self.dim**2).to(self.device))
+        log_normal = dist.Beta(self.beta_vals[0]*torch.ones(self.dim**2).to(self.device), self.beta_vals[1]*torch.ones(self.dim**2).to(self.device))
         x = pyro.sample("x", dist.Independent(log_normal, 1))
         projector = FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg).to(self.device)).to(self.device)
         proj = projector.forward(x.view(1, 1, self.dim, self.dim))
-        normal = dist.Normal(proj.view(self.dim*self.deg), (0.05**2)*torch.ones(self.dim*self.deg).to(self.device))
+        normal = dist.Normal(proj.view(self.dim*self.deg), (self.likel_std**2)*torch.ones(self.dim*self.deg).to(self.device))
         with pyro.plate("projections1", 1):
             return pyro.sample("y", dist.Independent(normal, 1), obs=sino)
     
-    def run(self, img, num_samples, num_burnin=0, add_noise=0):
+    def run(self, img, num_samples, num_burnin=0, noise_power=0):
         torch_slice = torch.Tensor(img).view(1, 1, self.dim, self.dim).to(self.device)
 
         projector = self._projector().to(self.device)
         torch_sino = projector(torch_slice).view(self.deg*self.dim)
 
-
-        
-        mean_sino = torch.mean(torch.flatten(torch_sino))
-        torch_sino += add_noise*mean_sino*torch.randn(size=[self.deg*self.dim]).to(self.device)
+        if noise_power != 0:
+            sq_factor = 10**(noise_power/10)
+            noise_sq = torch.mean(torch_sino**2)/sq_factor
+            noise = torch.sqrt(noise_sq)
+            torch_sino += noise.to(self.device)*torch.randn(*torch_sino.shape).to(self.device)
 
         model_func = lambda img: self._pyro_model(img)
 
@@ -74,20 +77,14 @@ class NUTS_sampler_Beta():
         samples = mcmc.get_samples()['x']
         return samples
 
-class NUTS_sampler_LMRF():
+class NUTS_sampler_LogN():
 
-    def __init__(self, dims, deg, device):
+    def __init__(self, dims, deg, device, likel_std=0.05):
         self.dims = dims
         self.dim = dims[0]
         self.deg = deg
         self.device = device
-
-        #X = torch.linspace(0, self.dim**2-1, self.dim**2).reshape(-1, 1)
-        #sq_dists = torch.cdist(X, X,  p=2)**2
-        #self.cov_mat = torch.exp(-4*sq_dists / (2))
-        #self.cov_mat.fill_diagonal_(1.0) #+ torch.eye(self.dim**2)
-        
-        #self.chol_mat = torch.linalg.cholesky(self.cov_mat + 2*torch.eye(self.dim**2)).to(self.device)
+        self.likel_std = likel_std
 
     def _projector(self):
         return FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg))
@@ -106,7 +103,7 @@ class NUTS_sampler_LMRF():
         x = x.view(self.dim, self.dim)
         projector = FastRadonTransform([1, 1, self.dim, self.dim], torch.arange(self.deg).to(self.device)).to(self.device)
         proj = projector.forward(x.view(1, 1, self.dim, self.dim))
-        normal = dist.Normal(proj.view(self.dim*self.deg), 0.05**2*torch.ones(self.dim*self.deg).to(self.device))
+        normal = dist.Normal(proj.view(self.dim*self.deg), self.likel_std**2*torch.ones(self.dim*self.deg).to(self.device))
         with pyro.plate("projections1", 1):
             return pyro.sample("y", dist.Independent(normal, 1), obs=sino)
     
@@ -121,13 +118,9 @@ class NUTS_sampler_LMRF():
             sq_factor = 10**(noise_power/10)
             noise_sq = torch.mean(torch_sino**2)/sq_factor
             noise = torch.sqrt(noise_sq)
-            print(torch.mean(torch_sino))
-            print(noise)
-        else:
-            noise = 0
+            torch_sino += noise.to(self.device)*torch.randn(*torch_sino.shape).to(self.device)
 
-        torch_sino += noise.to(self.device)*torch.randn(*torch_sino.shape).to(self.device)
-
+        
         model_func = lambda img: self._pyro_model(img)
 
         nuts_kernel = NUTS(model_func, adapt_step_size=True)

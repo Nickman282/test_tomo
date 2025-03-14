@@ -299,7 +299,7 @@ def MSE(ground_truth, sample):
 
 
 def PSNR(ground_truth, sample):
-    m = sample.max()
+    m = 1
 
     SE = np.sum((ground_truth - sample)**2)
     Norm = ground_truth.ravel().shape[0]
@@ -308,7 +308,7 @@ def PSNR(ground_truth, sample):
     return 10*np.log10(m**2/Mean_SE)
 
 def sq_PSNR(ground_truth, sample):
-    m = sample.max()
+    m = 1
 
     SE = np.sum((ground_truth - sample)**2)
     Norm = ground_truth.ravel().shape[0]

@@ -72,14 +72,21 @@ class LimitedAngleFBP(BasicProjector):
         
         self.fbp = FBP(self.ig, self.ag, device='gpu')
 
-    def transform_single(self, img):
+    def transform_single(self, img, noise_power=0):
         img = img.reshape(self.img_dims)
+
+        if noise_power != 0:
+            sq_factor = 10**(noise_power/10)
+            noise_sq = np.mean(img**2)/sq_factor
+            noise = np.sqrt(noise_sq)
+        else:
+            noise = 0
 
         img_container = ImageData(img, geometry=self.ig)
         img_phantom = self.proj_op.direct(img_container)
 
         reconstruction = self.fbp(img_phantom).as_array()
-        return reconstruction.as_array()
+        return reconstruction
 
     def transform_batch(self, batch):
         

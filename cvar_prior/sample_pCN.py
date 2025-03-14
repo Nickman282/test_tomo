@@ -26,6 +26,8 @@ from cil.utilities.display import show2D
 # Plugins
 from cil.plugins.astra.processors import FBP, AstraBackProjector3D
 from cil.plugins.astra.operators import ProjectionOperator
+
+
 '''Modified pCN module from the CUQIpy distribution'''
 class pCN():
 

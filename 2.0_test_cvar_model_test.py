@@ -43,11 +43,12 @@ x_samples = model.decode(z_samples).detach().cpu().numpy()
 x_ground = np.squeeze(batch.detach().cpu().numpy())
 
 
-fig, ax = plt.subplots(nrows=2, ncols=2)
-im = ax[0, 1].imshow(x_samples[0].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
-im = ax[1, 1].imshow(x_samples[1].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
-im = ax[0, 0].imshow(x_ground[0], cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
-im = ax[1, 0].imshow(x_ground[1], cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+fig, ax = plt.subplots(nrows=2, ncols=1)
+
+im = ax[1].imshow(x_samples[0].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+#im = ax[1, 1].imshow(x_samples[1].reshape(256, 256), cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+im = ax[0].imshow(x_ground[0], cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
+#im = ax[1, 0].imshow(x_ground[1], cmap='Greys_r', aspect='auto', vmin = 0, vmax = 1)
         #plt.colorbar(im, ax=ax[i//5, i%5])        
 
 plt.show()

@@ -28,7 +28,7 @@ class pCNSampler(GenericSampler):
 
         return posterior
     
-    def run(self, test_img, x0=None, N=500, Nb=500):
+    def run(self, test_img, init, N=500, Nb=500):
 
         test_sino = self._projection(test_img)
         y_obs = cq.array.CUQIarray(test_sino.flatten(order="C"), is_par=True, 
@@ -37,7 +37,7 @@ class pCNSampler(GenericSampler):
         posterior = self._post_distribution(data=y_obs)
 
         # Gibbs sampler on p(d,s,x|y=y_obs)
-        sampler = cq.sampler.pCN(posterior, scale=self.scale, x0=x0)
+        sampler = cq.sampler.pCN(posterior, scale=self.scale, x0=init)
 
 
         return sampler.sample(N, Nb).samples.T

@@ -35,7 +35,7 @@ print(covariance_path.max())
 # Add prior regularization to ensure positive definiteness
 
 print("Adding prior offset to covariance")
-covariance_path[:] = (covariance_path[:] + 9*np.diag(np.ones(128**2)))/10
+covariance_path[:] = (covariance_path[:] + 9*np.diag(np.ones(dim**2)))/10
 
 # Cholesky decomposition
 print("Cholesky Decomposition")
